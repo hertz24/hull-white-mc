@@ -11,6 +11,8 @@ __device__ float average(float r, float a, float t, float s);
 
 __device__ float uncertainty(float sigma, float a, float t, float s);
 
-__global__ void shortRate(curandState *state, float *sum, float a, float sigma, float t, float s, int n, int m);
+__device__ float shortRate(float r, float sigma, float a, float t, float s, float G);
+
+__global__ void zeroCouponBondPrice(curandState *state, float *sum, float sigma, float a, float t, float T, int N, int n);
 
 #endif

@@ -20,7 +20,7 @@ __device__ float marketFitting(float t)
 __device__ float average(float r, float a, float t, float s)
 {
     float dt = t - s;
-    return r * expf(-a * dt) + (dt / 2) * (expf(-a * dt) * marketFitting(s) + marketFitting(t));
+    return r * expf(-a * dt) + 0.5f * dt * (expf(-a * dt) * marketFitting(s) + marketFitting(t));
 }
 
 __device__ float uncertainty(float sigma, float a, float t, float s)
@@ -28,24 +28,34 @@ __device__ float uncertainty(float sigma, float a, float t, float s)
     return sqrt(sigma * sigma * (1 - exp(-2 * a * (t - s))) / (2 * a));
 }
 
-__global__ void shortRate(curandState *state, float *sum, float a, float sigma, float t, float s, int n, int m)
+__device__ float shortRate(float r, float sigma, float a, float t, float s, float G)
+{
+    return average(r, a, t, s) + uncertainty(sigma, a, t, s) * G;
+}
+
+__global__ void zeroCouponBondPrice(curandState *state, float *sum, float sigma, float a, float t, float T, int N, int n)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     __shared__ float tmp[1024];
-    if (tid < m)
+    tmp[threadIdx.x] = 0.0f;
+    if (tid < n)
     {
         curandState localState = state[tid];
         float r = 0.012f;
-        float dt = (t - s) / n;
-        for (int i = 0; i < n; i++)
+        float dt = (T - t) / N;
+        float integral = 0.0f;
+        float s = t;
+        for (int i = 0; i < N; i++)
         {
             float G = curand_normal(&localState);
-            t = s + dt;
-            r = average(r, a, t, s) + uncertainty(sigma, a, t, s) * G;
-            s = t;
+            float current_t = s + dt;
+            float next_r = shortRate(r, sigma, a, current_t, s, G);
+            integral += 0.5f * dt * (r + next_r);
+            r = next_r;
+            s = current_t;
         }
         state[tid] = localState;
-        tmp[threadIdx.x] = r;
+        tmp[threadIdx.x] = expf(-integral);
     }
     __syncthreads();
     for (int i = blockDim.x / 2; i != 0; i /= 2)
